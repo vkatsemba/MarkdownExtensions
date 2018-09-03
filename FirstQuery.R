@@ -4,7 +4,7 @@ library(RJDBC)
 library(DBI)
 
 driver <- JDBC(driverClass = "org.netezza.Driver", classPath = "C:\\Users\\Vadim_Katsemba\\Downloads\\nzjdbc.jar", "'")
-conn <- dbConnect(driver, "jdbc:netezza://prd1905.cs.ctc:5480/EDWPRD", "RpaBot1", "QazPlm1$")
+conn <- dbConnect(driver, "URL", "Id", "Password")
 
 
 q_df <- dbSendQuery(conn, "SELECT 
