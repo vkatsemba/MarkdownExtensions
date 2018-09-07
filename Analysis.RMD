@@ -1,0 +1,153 @@
+---
+title: "Querying Markdown Extensions"
+author: "Vadim Katsemba"
+date: "September 7, 2018"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Set Working Directory and load the appropriate libraries
+
+```{r, include=TRUE}
+setwd("C:\\Users\\Vadim_Katsemba\\Documents")
+
+library(rmarkdown)
+library(RJDBC)
+library(DBI)
+```
+
+## Setup the database driver and connect to the database
+
+```{r}
+driver <- JDBC(driverClass = "org.netezza.Driver", classPath = "C:\\Users\\Vadim_Katsemba\\Downloads\\nzjdbc.jar", "'")
+conn <- dbConnect(driver, "jdbc:netezza://prd1905.cs.ctc:5480/EDWPRD", "RpaBot1", "QazPlm1$")
+```
+
+##1)	Deal Product EDW -> To create a table ‘tbl Deal Product EDW’
+
+Return the appropriate columns from the Deal_Current_Dim table and convert the resulting table into a data frame.
+
+```{r}
+deal_current_dim <- dbSendQuery(conn, "SELECT DEAL_ID,DEAL_YEAR,DEAL_NUM, DEAL_NM, DEAL_START_DATE,DEAL_END_DATE
+                          FROM DEAL_CURRENT_DIM
+                          WHERE (((DEAL_NUM) Not Like '96%') AND ((DEAL_END_DATE)='2018-09-15'))")
+
+deal_current_dim_df <- dbFetch(deal_current_dim, n  = -1)
+```
+
+Return the appropriate columns from the Deal_Product_Current_Dim table and convert the resulting table into a data frame.
+
+```{r}
+deal_product_current_dim <- dbSendQuery(conn, "SELECT ACTIVE_IND,PRODUCT_ID,DEAL_ID,DEAL_FLYER_PAGE_NUM
+                          FROM DEAL_PRODUCT_CURRENT_DIM")
+
+deal_product_current_dim_df <- dbFetch(deal_product_current_dim, n = -1)
+```
+
+Inner join the two previous tables on the Deal_Id column.
+
+```{r}
+join_dealid <- merge(deal_current_dim_df, deal_product_current_dim_df)
+```
+
+Return the appropriate columns from the Product_Ctr_Current_Dim table and convert the resulting table into a data frame.
+
+```{r}
+product_ctr_current_dim <- dbSendQuery(conn, "SELECT DIVISION_NM, PRODUCT_ID, LOB_NM, CATEGORY_NM, SUBCATEGORY_NM, FINELINE_NM, PRODUCT_NUM, PRODUCT_ENGLISH_DESC, CORPORATE_STATUS_CD, CORPORATE_STATUS_CD_CHANGE_DATE, DEALER_RESTRICTION_CD, NATIONAL_DEALER_PRICE_AMT, NATIONAL_CONSUMER_PRICE_AMT
+                          FROM PRODUCT_CTR_CURRENT_DIM")
+
+product_ctr_current_dim_df <- dbFetch(product_ctr_current_dim, n = -1)
+```
+
+Inner join the join_dealid table with the previous table on the Product_Id column.
+
+```{r}
+join_productid <- merge(join_dealid, product_ctr_current_dim_df)
+```
+
+Write the resulting table to a csv file: Deal_Product_EDW.csv
+
+```{r}
+write.csv(join_productid, "Deal_PRoduct_EDW.csv")
+```
+
+## 2)	All Previous Deal Product EDW -> To create a table ‘tbl All Previous Deal Product EDW’
+
+Return the appropriate columns from the Deal_Current_Dim table and convert the resulting table into a data frame.
+
+```{r}
+deal_current_dim2 <- dbSendQuery(conn, "SELECT DEAL_ID,DEAL_YEAR,DEAL_NUM,DEAL_NM,DEAL_START_DATE,DEAL_END_DATE,ACTIVE_IND
+                                       FROM DEAL_CURRENT_DIM
+                                       WHERE (((DEAL_CURRENT_DIM.DEAL_YEAR)>'2015') AND ((DEAL_CURRENT_DIM.DEAL_NM) Not Like '%DNA%' And (DEAL_CURRENT_DIM.DEAL_NM) Not Like '%DO NOT ACTIVATE%') AND ((DEAL_CURRENT_DIM.DEAL_END_DATE)<'2018-09-15'))")
+
+deal_current_dim2df <- dbFetch(deal_current_dim2, n = -1)
+```
+
+Return the appropriate columns from the Deal_Product_Current_Dim table and convert the resulting table into a data frame.
+
+```{r}
+deal_product_current_dim2 <- dbSendQuery(conn, "SELECT DEAL_ID, PRODUCT_ID
+                             FROM DEAL_PRODUCT_CURRENT_DIM")
+
+deal_product_current_dim2df <- dbFetch(deal_product_current_dim2, n = -1)
+```
+
+Inner join the two previous tables on the Deal_Id column.
+
+```{r}
+join_dealid2 <- merge(deal_current_dim2df, deal_product_current_dim2df)
+```
+
+Return the appropriate columns from the Product_Ctr_Current_Dim table and convert the resulting table into a data frame.
+
+```{r}
+product_ctr_current_dim2 <- dbSendQuery(conn, "SELECT PRODUCT_ID
+                          FROM PRODUCT_CTR_CURRENT_DIM")
+
+product_ctr_current_dim2df <- dbFetch(product_ctr_current_dim2, n = -1)
+```
+
+Inner join the join_dealid2 table with the previous table on the Product_Id column.
+
+```{r}
+join_productid2 <- merge(join_productid, product_ctr_current_dim2df, by.x = "PRODUCT_NUM", by.y = "PRODUCT_ID")
+```
+
+Write the resulting table to a csv file All_Previous_Deal_Product_EDW.csv
+
+```{r}
+write.csv(join_productid2, "All_Previous_Deal_Product_EDW.csv")
+```
+
+## 3)	Unallocated Qty -> To create a table ‘tbl DC Unallocated Qty’
+
+Read the whsein.csv file
+
+```{r}
+whsein <- read.csv("WHSEINV.CSV", header = TRUE)
+```
+
+Filter the data to include only the Product and Quantity Unallocated columns.
+
+```{r}
+whsein_filteredcols <- whsein[,c(1,18)]
+```
+
+Inner join the filtered data with the Deal Product EDW table
+
+```{r}
+Unallocated_Quantity <- merge(whsein_filteredcols, join_productid, by.x = "PRODUCT", by.y = "PRODUCT_NUM")
+```
+
+Write the resulting table to a csv file Unallocated_Qty.csv
+
+```{r}
+write.csv(Unallocated_Quantity, "Unallocated_Quantity.csv")
+```
+
